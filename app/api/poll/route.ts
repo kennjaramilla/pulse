@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { STALE_MS, SIGNAL_TTL_MS } from "@/lib/presence";
 import type { PollResponse } from "@/lib/types";
 import { authenticate, readToken, unauthorized } from "@/lib/auth";
+import { removeSessions } from "@/lib/remove-sessions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,8 +29,24 @@ export async function GET(request: NextRequest) {
 
   // 2) Reap stale presence rows and orphaned signals (independent deletes —
   // no atomicity needed, and avoids transactions over a PgBouncer pooler).
-  await prisma.presence.deleteMany({ where: { lastSeen: { lt: staleCutoff } } });
+  const stale = await prisma.presence.findMany({
+    where: { lastSeen: { lt: staleCutoff } },
+    select: { id: true },
+  });
+  await removeSessions(stale.map((p) => p.id));
   await prisma.signal.deleteMany({ where: { createdAt: { lt: signalCutoff } } });
+
+  // If the person we were linked to vanished without the cleanup reaching us
+  // (a race with leave), free ourselves so we don't stay "busy" forever.
+  if (me.peerId) {
+    const peer = await prisma.presence.findUnique({ where: { id: me.peerId } });
+    if (!peer) {
+      await prisma.presence.updateMany({
+        where: { id },
+        data: { busy: false, peerId: null },
+      });
+    }
+  }
 
   // 3) Online peers, excluding self.
   const peers = await prisma.presence.findMany({

@@ -6,7 +6,7 @@ import WorldMap from "./components/WorldMap";
 import ConnectionPrompt from "./components/ConnectionPrompt";
 import ChatPanel, { type ChatMessage } from "./components/ChatPanel";
 import VideoPanel from "./components/VideoPanel";
-import { join, leave, poll, sendSignal, signalBeacon, SessionExpiredError } from "@/lib/api";
+import { join, leave, poll, sendSignal, SessionExpiredError } from "@/lib/api";
 import { PeerSession, type DescType, type PeerControl } from "@/lib/webrtc";
 import { POLL_INTERVAL_MS } from "@/lib/presence";
 import { type PeerDot, type SignalMsg } from "@/lib/types";
@@ -76,7 +76,11 @@ export default function Home() {
   function startPeer(peerId: string, initiator: boolean) {
     const ps = new PeerSession(initiator, {
       onSignal: (type: DescType, payload: string) => {
-        void sendSignal(token, peerId, type, payload);
+        void sendSignal(token, peerId, type, payload).then((ok) => {
+          if (!ok && connRef.current.kind === "connecting") {
+            teardown("Couldn't connect. Please try again.");
+          }
+        });
       },
       onChat: (text) => addMessage(false, text),
       onControl: (ctrl) => handleControl(ctrl),
@@ -92,7 +96,7 @@ export default function Home() {
       },
       onChannelClose: () => {
         // The stranger closed their tab or lost the connection. Send "end"
-        // anyway so the server frees both busy flags.
+        // anyway so the server frees both sides.
         void sendSignal(token, peerId, "end");
         teardown("Stranger disconnected.");
       },
@@ -161,8 +165,12 @@ export default function Home() {
     if (connRef.current.kind !== "incoming") return;
     const peerId = connRef.current.peerId;
     startPeer(peerId, false);
-    void sendSignal(token, peerId, "accept");
     setConn({ kind: "connecting", peerId });
+    void sendSignal(token, peerId, "accept").then((ok) => {
+      if (!ok && connRef.current.kind === "connecting") {
+        teardown("That stranger is no longer available.");
+      }
+    });
   }
 
   function declineIncoming() {
@@ -316,13 +324,8 @@ export default function Home() {
 
   useEffect(() => {
     if (!token || phase !== "live") return;
-    const onLeave = () => {
-      const c = connRef.current;
-      if (c.kind !== "idle") {
-        signalBeacon(token, c.peerId, c.kind === "incoming" ? "decline" : "end");
-      }
-      leave(token);
-    };
+    // The server tells whoever we were talking to.
+    const onLeave = () => leave(token);
     window.addEventListener("pagehide", onLeave);
     window.addEventListener("beforeunload", onLeave);
     return () => {

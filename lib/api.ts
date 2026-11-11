@@ -31,12 +31,17 @@ export async function sendSignal(
   toId: string,
   type: SignalType,
   payload?: string,
-): Promise<void> {
-  await fetch("/api/signal", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", [TOKEN_HEADER]: token },
-    body: JSON.stringify({ toId, type, payload }),
-  });
+): Promise<boolean> {
+  try {
+    const res = await fetch("/api/signal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", [TOKEN_HEADER]: token },
+      body: JSON.stringify({ toId, type, payload }),
+    });
+    return res.ok; // false when the server refuses (e.g. they already left)
+  } catch {
+    return false;
+  }
 }
 
 // Fire-and-forget POST that survives the tab closing. sendBeacon can't set
@@ -57,14 +62,4 @@ function beacon(url: string, data: unknown): void {
 
 export function leave(token: string): void {
   beacon("/api/leave", { token });
-}
-
-// Tells the stranger we're gone before the tab closes, instead of leaving
-// them waiting on a dead request or chat until something times out.
-export function signalBeacon(
-  token: string,
-  toId: string,
-  type: "decline" | "end",
-): void {
-  beacon("/api/signal", { token, toId, type });
 }

@@ -16,12 +16,20 @@ const VALID_TYPES: SignalType[] = [
   "end",
 ];
 
-const MAX_PAYLOAD = 64 * 1024; // SDP/ICE are small; cap to be safe.
+// Only WebRTC messages carry a payload. SDP grows with every video
+// renegotiation, so keep the original 64 KB cap.
+const WITH_PAYLOAD: SignalType[] = ["offer", "answer", "ice"];
+const MAX_PAYLOAD = 64 * 1024;
 
-// POST /api/signal — body { toId, type, payload? }. The sender is the owner
-// of the session token.
-// Drops one message into the recipient's mailbox. Also manages the `busy`
-// flag so a user can only be in one connection at a time.
+// POST /api/signal — body { toId, type, payload? }.
+//
+// The server tracks who is talking to whom in Presence.peerId (busy = the
+// connection was accepted) and only delivers messages that fit:
+//   request  → both sides free; my peerId becomes the target
+//   accept   → only if the target is requesting me
+//   decline  → only if the target is requesting me
+//   offer/answer/ice → only between two connected peers
+//   end      → only to the person I'm requesting or connected to
 export async function POST(request: NextRequest) {
   let body: unknown;
   try {
@@ -42,60 +50,113 @@ export async function POST(request: NextRequest) {
   if (typeof type !== "string" || !VALID_TYPES.includes(type as SignalType)) {
     return Response.json({ error: "invalid type" }, { status: 400 });
   }
-  if (
-    payload !== undefined &&
-    payload !== null &&
-    (typeof payload !== "string" || payload.length > MAX_PAYLOAD)
-  ) {
+  const signalType = type as SignalType;
+  const needsPayload = WITH_PAYLOAD.includes(signalType);
+  const payloadOk = needsPayload
+    ? typeof payload === "string" && payload.length <= MAX_PAYLOAD
+    : payload == null;
+  if (!payloadOk) {
     return Response.json({ error: "invalid payload" }, { status: 400 });
   }
+  const payloadStr = needsPayload ? (payload as string) : null;
 
-  const signalType = type as SignalType;
-  const payloadStr = typeof payload === "string" ? payload : null;
-
-  // Enforce "one active connection at a time": if the target is already busy,
-  // auto-decline the request instead of delivering it.
-  if (signalType === "request") {
-    const target = await prisma.presence.findUnique({
-      where: { id: toId },
-      select: { busy: true },
-    });
-    if (!target) {
-      // Target went offline — tell the initiator it was declined.
-      await sendDecline(toId, fromId);
-      return Response.json({ ok: true, autoDeclined: true });
-    }
-    if (target.busy) {
-      await sendDecline(toId, fromId);
-      return Response.json({ ok: true, autoDeclined: true });
-    }
-  }
-
-  // Busy transitions:
-  // - accept: the connection is now active → mark BOTH peers busy.
-  // - decline/end: free both peers.
-  if (signalType === "accept") {
-    await prisma.presence.updateMany({
-      where: { id: { in: [fromId, toId] } },
-      data: { busy: true },
-    });
-  } else if (signalType === "decline" || signalType === "end") {
-    await prisma.presence.updateMany({
-      where: { id: { in: [fromId, toId] } },
-      data: { busy: false },
-    });
-  }
-
-  await prisma.signal.create({
-    data: { fromId, toId, type: signalType, payload: payloadStr },
+  const target = await prisma.presence.findUnique({
+    where: { id: toId },
+    select: { busy: true, peerId: true },
   });
 
+  // The updates below are conditional (updateMany + where) so two requests
+  // racing each other can't both win. No transactions over the pooler.
+  switch (signalType) {
+    case "request": {
+      if (me.peerId) return conflict();
+      // Target offline or already occupied: auto-decline instead of delivering.
+      if (!target || target.peerId) {
+        await deliver(toId, fromId, "decline");
+        return Response.json({ ok: true, autoDeclined: true });
+      }
+      const claimed = await prisma.presence.updateMany({
+        where: { id: fromId, peerId: null },
+        data: { peerId: toId },
+      });
+      if (claimed.count === 0) return conflict();
+      break;
+    }
+
+    case "accept": {
+      const claimedMe = await prisma.presence.updateMany({
+        where: { id: fromId, peerId: null },
+        data: { peerId: toId, busy: true },
+      });
+      if (claimedMe.count === 0) return conflict();
+      const claimedThem = await prisma.presence.updateMany({
+        where: { id: toId, peerId: fromId, busy: false },
+        data: { busy: true },
+      });
+      if (claimedThem.count === 0) {
+        // They cancelled or left a moment ago. Undo and refuse.
+        await free(fromId, toId);
+        return conflict();
+      }
+      break;
+    }
+
+    case "decline": {
+      const cleared = await prisma.presence.updateMany({
+        where: { id: toId, peerId: fromId, busy: false },
+        data: { peerId: null },
+      });
+      if (cleared.count === 0) return conflict();
+      break;
+    }
+
+    case "offer":
+    case "answer":
+    case "ice": {
+      const paired =
+        me.busy && me.peerId === toId && target?.busy && target.peerId === fromId;
+      if (!paired) return conflict();
+      break;
+    }
+
+    case "end": {
+      // Free both sides of whatever link exists between us.
+      const freed = await prisma.presence.updateMany({
+        where: {
+          OR: [
+            { id: fromId, peerId: toId },
+            { id: toId, peerId: fromId },
+          ],
+        },
+        data: { busy: false, peerId: null },
+      });
+      if (freed.count === 0) return conflict();
+      // They're already gone, so there's nobody to deliver to.
+      if (!target) return Response.json({ ok: true });
+      break;
+    }
+  }
+
+  await deliver(fromId, toId, signalType, payloadStr);
   return Response.json({ ok: true });
 }
 
-// Helper: deliver an auto-decline from `target` back to `initiator`.
-async function sendDecline(targetId: string, initiatorId: string) {
-  await prisma.signal.create({
-    data: { fromId: targetId, toId: initiatorId, type: "decline", payload: null },
+function conflict() {
+  return Response.json({ error: "not allowed right now" }, { status: 409 });
+}
+
+function free(id: string, peerId: string) {
+  return prisma.presence.updateMany({
+    where: { id, peerId },
+    data: { busy: false, peerId: null },
   });
+}
+
+function deliver(
+  fromId: string,
+  toId: string,
+  type: SignalType,
+  payload: string | null = null,
+) {
+  return prisma.signal.create({ data: { fromId, toId, type, payload } });
 }
