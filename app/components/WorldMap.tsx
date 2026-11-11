@@ -5,7 +5,8 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import type { Map as MapboxMap, Marker } from "mapbox-gl";
 import type { PeerDot } from "@/lib/types";
 
-const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "pk.eyJ1IjoicHVsc2UtbWFwIiwiYSI6ImNrMDBkZW1vMDAwMDAwMDAifQ.AAAAAAAAAAAAAAAAAAAAAA";
+// No placeholder fallback: a fake token fails silently and hides the setup hint below.
+const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
 function dotColor(id: string): string {
   let hash = 0;
