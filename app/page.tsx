@@ -6,7 +6,7 @@ import WorldMap from "./components/WorldMap";
 import ConnectionPrompt from "./components/ConnectionPrompt";
 import ChatPanel, { type ChatMessage } from "./components/ChatPanel";
 import VideoPanel from "./components/VideoPanel";
-import { join, leave, poll, sendSignal } from "@/lib/api";
+import { join, leave, poll, sendSignal, signalBeacon } from "@/lib/api";
 import { PeerSession, type DescType, type PeerControl } from "@/lib/webrtc";
 import { POLL_INTERVAL_MS } from "@/lib/presence";
 import { type PeerDot, type SignalMsg } from "@/lib/types";
@@ -83,11 +83,18 @@ export default function Home() {
       onRemoteStream: (stream) => setRemoteStream(stream),
       onConnectionState: (state) => {
         if (state === "failed") {
+          void sendSignal(sessionId, peerId, "end");
           teardown("Connection failed (network).");
         }
       },
       onChannelOpen: () => {
         setConn({ kind: "connected", peerId });
+      },
+      onChannelClose: () => {
+        // The stranger closed their tab or lost the connection. Send "end"
+        // anyway so the server frees both busy flags.
+        void sendSignal(sessionId, peerId, "end");
+        teardown("Stranger disconnected.");
       },
     });
     peerRef.current = ps;
@@ -294,7 +301,13 @@ export default function Home() {
 
   useEffect(() => {
     if (!sessionId || phase !== "live") return;
-    const onLeave = () => leave(sessionId);
+    const onLeave = () => {
+      const c = connRef.current;
+      if (c.kind !== "idle") {
+        signalBeacon(sessionId, c.peerId, c.kind === "incoming" ? "decline" : "end");
+      }
+      leave(sessionId);
+    };
     window.addEventListener("pagehide", onLeave);
     window.addEventListener("beforeunload", onLeave);
     return () => {
