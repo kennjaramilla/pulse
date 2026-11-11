@@ -1,24 +1,23 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { authenticate, readToken, unauthorized } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// POST /api/leave — body { id }. Removes the presence row and any pending
-// signals to/from this user. Called via navigator.sendBeacon on tab close, so
-// the body may arrive as text — parse defensively.
+// POST /api/leave — body { token }. Removes the caller's presence row and any
+// pending signals to/from them. Called via navigator.sendBeacon on tab close,
+// so the body may arrive as text — parse defensively.
 export async function POST(request: NextRequest) {
-  let id: string | undefined;
+  let body: unknown = null;
   try {
     const text = await request.text();
-    id = text ? (JSON.parse(text)?.id as string | undefined) : undefined;
-  } catch {
-    id = undefined;
-  }
+    if (text) body = JSON.parse(text);
+  } catch {}
 
-  if (typeof id !== "string" || !id) {
-    return Response.json({ error: "invalid id" }, { status: 400 });
-  }
+  const me = await authenticate(readToken(request, body));
+  if (!me) return unauthorized();
+  const id = me.id;
 
   // Independent cleanup deletes — no atomicity needed (and interactive
   // transactions are unreliable over a PgBouncer pooler).

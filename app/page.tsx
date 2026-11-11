@@ -6,7 +6,7 @@ import WorldMap from "./components/WorldMap";
 import ConnectionPrompt from "./components/ConnectionPrompt";
 import ChatPanel, { type ChatMessage } from "./components/ChatPanel";
 import VideoPanel from "./components/VideoPanel";
-import { join, leave, poll, sendSignal, signalBeacon } from "@/lib/api";
+import { join, leave, poll, sendSignal, signalBeacon, SessionExpiredError } from "@/lib/api";
 import { PeerSession, type DescType, type PeerControl } from "@/lib/webrtc";
 import { POLL_INTERVAL_MS } from "@/lib/presence";
 import { type PeerDot, type SignalMsg } from "@/lib/types";
@@ -24,7 +24,7 @@ const REQUEST_TIMEOUT_MS = 30_000;
 
 export default function Home() {
   const [phase, setPhase] = useState<"gate" | "live">("gate");
-  const [sessionId] = useState(() => crypto.randomUUID());
+  const [token, setToken] = useState(""); // secret session token from /api/join
   const [peers, setPeers] = useState<PeerDot[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -76,14 +76,14 @@ export default function Home() {
   function startPeer(peerId: string, initiator: boolean) {
     const ps = new PeerSession(initiator, {
       onSignal: (type: DescType, payload: string) => {
-        void sendSignal(sessionId, peerId, type, payload);
+        void sendSignal(token, peerId, type, payload);
       },
       onChat: (text) => addMessage(false, text),
       onControl: (ctrl) => handleControl(ctrl),
       onRemoteStream: (stream) => setRemoteStream(stream),
       onConnectionState: (state) => {
         if (state === "failed") {
-          void sendSignal(sessionId, peerId, "end");
+          void sendSignal(token, peerId, "end");
           teardown("Connection failed (network).");
         }
       },
@@ -93,7 +93,7 @@ export default function Home() {
       onChannelClose: () => {
         // The stranger closed their tab or lost the connection. Send "end"
         // anyway so the server frees both busy flags.
-        void sendSignal(sessionId, peerId, "end");
+        void sendSignal(token, peerId, "end");
         teardown("Stranger disconnected.");
       },
     });
@@ -138,13 +138,13 @@ export default function Home() {
   function requestConnection(peerId: string) {
     if (connRef.current.kind !== "idle") return;
     setConn({ kind: "requesting", peerId });
-    void sendSignal(sessionId, peerId, "request");
+    void sendSignal(token, peerId, "request");
     requestTimer.current = setTimeout(() => {
       if (
         connRef.current.kind === "requesting" &&
         connRef.current.peerId === peerId
       ) {
-        void sendSignal(sessionId, peerId, "end");
+        void sendSignal(token, peerId, "end");
         teardown("No answer.");
       }
     }, REQUEST_TIMEOUT_MS);
@@ -152,7 +152,7 @@ export default function Home() {
 
   function cancelRequest() {
     if (connRef.current.kind === "requesting") {
-      void sendSignal(sessionId, connRef.current.peerId, "end");
+      void sendSignal(token, connRef.current.peerId, "end");
     }
     teardown();
   }
@@ -161,20 +161,20 @@ export default function Home() {
     if (connRef.current.kind !== "incoming") return;
     const peerId = connRef.current.peerId;
     startPeer(peerId, false);
-    void sendSignal(sessionId, peerId, "accept");
+    void sendSignal(token, peerId, "accept");
     setConn({ kind: "connecting", peerId });
   }
 
   function declineIncoming() {
     if (connRef.current.kind !== "incoming") return;
-    void sendSignal(sessionId, connRef.current.peerId, "decline");
+    void sendSignal(token, connRef.current.peerId, "decline");
     setConn({ kind: "idle" });
   }
 
   function endConnection() {
     const c = connRef.current;
     if (c.kind === "connecting" || c.kind === "connected") {
-      void sendSignal(sessionId, c.peerId, "end");
+      void sendSignal(token, c.peerId, "end");
     }
     teardown();
   }
@@ -221,7 +221,7 @@ export default function Home() {
         if (connRef.current.kind === "idle") {
           setConn({ kind: "incoming", peerId: sig.fromId });
         } else {
-          void sendSignal(sessionId, sig.fromId, "decline");
+          void sendSignal(token, sig.fromId, "decline");
         }
         break;
       }
@@ -272,23 +272,38 @@ export default function Home() {
     }
   }
 
+  // The server forgot us (e.g. the tab was asleep longer than STALE_MS).
+  // Go back to the entry screen so the user can rejoin with a new session.
+  function expireSession() {
+    teardown();
+    setToken("");
+    setPhase("gate");
+  }
+
   const processSignalRef = useRef(processSignal);
+  const expireSessionRef = useRef(expireSession);
   useEffect(() => {
     processSignalRef.current = processSignal;
+    expireSessionRef.current = expireSession;
   });
 
   useEffect(() => {
-    if (phase !== "live" || !sessionId) return;
+    if (phase !== "live" || !token) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const tick = async () => {
       try {
-        const data = await poll(sessionId);
+        const data = await poll(token);
         if (!active) return;
         setPeers(data.peers);
         for (const s of data.signals) processSignalRef.current(s);
-      } catch {}
+      } catch (err) {
+        if (err instanceof SessionExpiredError) {
+          expireSessionRef.current();
+          return;
+        }
+      }
       if (active) timer = setTimeout(tick, POLL_INTERVAL_MS);
     };
     tick();
@@ -297,16 +312,16 @@ export default function Home() {
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [phase, sessionId]);
+  }, [phase, token]);
 
   useEffect(() => {
-    if (!sessionId || phase !== "live") return;
+    if (!token || phase !== "live") return;
     const onLeave = () => {
       const c = connRef.current;
       if (c.kind !== "idle") {
-        signalBeacon(sessionId, c.peerId, c.kind === "incoming" ? "decline" : "end");
+        signalBeacon(token, c.peerId, c.kind === "incoming" ? "decline" : "end");
       }
-      leave(sessionId);
+      leave(token);
     };
     window.addEventListener("pagehide", onLeave);
     window.addEventListener("beforeunload", onLeave);
@@ -314,11 +329,11 @@ export default function Home() {
       window.removeEventListener("pagehide", onLeave);
       window.removeEventListener("beforeunload", onLeave);
     };
-  }, [sessionId, phase]);
+  }, [token, phase]);
 
   async function handleReady(lat: number, lng: number) {
+    setToken(await join(lat, lng));
     setMyLocation({ lat, lng });
-    await join(sessionId, lat, lng);
     setPhase("live");
   }
 

@@ -1,40 +1,46 @@
 // Client-side helpers for talking to the coordination API.
 import type { PollResponse, SignalType } from "@/lib/types";
 
-export async function join(
-  id: string,
-  lat: number,
-  lng: number,
-): Promise<void> {
-  await fetch("/api/join", {
+const TOKEN_HEADER = "x-session-token"; // must match lib/auth.ts
+
+// Returns the secret session token. Keep it in memory only.
+export async function join(lat: number, lng: number): Promise<string> {
+  const res = await fetch("/api/join", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id, lat, lng }),
+    body: JSON.stringify({ lat, lng }),
   });
+  if (!res.ok) throw new Error(`join failed: ${res.status}`);
+  return (await res.json()).token;
 }
 
-export async function poll(id: string): Promise<PollResponse> {
-  const res = await fetch(`/api/poll?id=${encodeURIComponent(id)}`, {
+export class SessionExpiredError extends Error {}
+
+export async function poll(token: string): Promise<PollResponse> {
+  const res = await fetch("/api/poll", {
     cache: "no-store",
+    headers: { [TOKEN_HEADER]: token },
   });
+  if (res.status === 401) throw new SessionExpiredError();
   if (!res.ok) throw new Error(`poll failed: ${res.status}`);
   return res.json();
 }
 
 export async function sendSignal(
-  fromId: string,
+  token: string,
   toId: string,
   type: SignalType,
   payload?: string,
 ): Promise<void> {
   await fetch("/api/signal", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fromId, toId, type, payload }),
+    headers: { "Content-Type": "application/json", [TOKEN_HEADER]: token },
+    body: JSON.stringify({ toId, type, payload }),
   });
 }
 
-// Fire-and-forget POST that survives the tab closing.
+// Fire-and-forget POST that survives the tab closing. sendBeacon can't set
+// headers, so the token goes in the body.
 function beacon(url: string, data: unknown): void {
   const body = JSON.stringify(data);
   if (typeof navigator !== "undefined" && navigator.sendBeacon) {
@@ -49,16 +55,16 @@ function beacon(url: string, data: unknown): void {
   }
 }
 
-export function leave(id: string): void {
-  beacon("/api/leave", { id });
+export function leave(token: string): void {
+  beacon("/api/leave", { token });
 }
 
 // Tells the stranger we're gone before the tab closes, instead of leaving
 // them waiting on a dead request or chat until something times out.
 export function signalBeacon(
-  fromId: string,
+  token: string,
   toId: string,
   type: "decline" | "end",
 ): void {
-  beacon("/api/signal", { fromId, toId, type });
+  beacon("/api/signal", { token, toId, type });
 }
