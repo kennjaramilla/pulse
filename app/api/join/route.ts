@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { applyPrivacyOffset, isValidLatLng } from "@/lib/geo";
 import { newSession } from "@/lib/auth";
+import { allowJoin, tooMany } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
 // Creates the session (public id + secret token) and its presence row with a
 // 1–3 km privacy offset. Raw coordinates are never stored.
 export async function POST(request: NextRequest) {
+  if (!(await allowJoin(request))) return tooMany();
+
   let body: unknown;
   try {
     body = await request.json();

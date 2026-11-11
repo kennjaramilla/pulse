@@ -36,3 +36,11 @@ model Signal {
 
   @@index([toId])
 }
+
+// Request counts for the current minute, keyed like "join:<ip hash>" or
+// "signal:<session id>". See lib/rate-limit.ts.
+model RateLimit {
+  key         String   @id
+  count       Int      @default(0)
+  windowStart DateTime @default(now())
+}

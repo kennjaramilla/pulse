@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import type { SignalType } from "@/lib/types";
 import { authenticate, readToken, unauthorized } from "@/lib/auth";
+import { allowSignal, tooMany } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,6 +60,8 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "invalid payload" }, { status: 400 });
   }
   const payloadStr = needsPayload ? (payload as string) : null;
+
+  if (!(await allowSignal(fromId, signalType))) return tooMany();
 
   const target = await prisma.presence.findUnique({
     where: { id: toId },

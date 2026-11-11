@@ -4,6 +4,7 @@ import { STALE_MS, SIGNAL_TTL_MS } from "@/lib/presence";
 import type { PollResponse } from "@/lib/types";
 import { authenticate, readToken, unauthorized } from "@/lib/auth";
 import { removeSessions } from "@/lib/remove-sessions";
+import { deleteOldCounters } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +36,7 @@ export async function GET(request: NextRequest) {
   });
   await removeSessions(stale.map((p) => p.id));
   await prisma.signal.deleteMany({ where: { createdAt: { lt: signalCutoff } } });
+  await deleteOldCounters();
 
   // If the person we were linked to vanished without the cleanup reaching us
   // (a race with leave), free ourselves so we don't stay "busy" forever.
