@@ -38,3 +38,62 @@ What was broken, in the order I hit it:
 Setup decisions: Postgres is Neon (Singapore), created through the Vercel
 integration so the same `DATABASE_URL` is in local `.env` and the Vercel
 project.
+
+## Phase 3 — Make it secure
+
+The core problem: **the only identity was the session id, and every id was
+public** (the poll response lists everyone). Ranked by impact:
+
+| # | Issue | Impact | Status |
+|---|---|---|---|
+| 1 | Anyone could act as anyone. `poll?id=` drained another user's mailbox, `signal` trusted the `fromId` in the body, `leave` deleted whatever id it was given, and `join` upserted a client-chosen id. | Read other people's requests and SDP, spoof requests and hang-ups, kick everyone off the map, move other people's dots. | Fixed |
+| 2 | No server-side connection state. `accept`, `end`, `offer` etc. were delivered between any two users. | Mark strangers busy, end other people's calls, push SDP to someone you're not talking to. | Fixed |
+| 3 | No rate limits. | Spam strangers with connection prompts, flood the tables, fill the map with fake dots. | Fixed |
+| 4 | No security headers. | Clickjacking (the page could be framed), no CSP, no camera/mic policy. | Fixed |
+| 5 | WebRTC with STUN shows each side the other's public IP. | A stranger can get a rough location from the IP, which works against the 1–3 km offset. | Documented |
+| 6 | Each join gets a fresh random offset, so many sessions from the same spot could be averaged to narrow down the real location. | Low; it needs a lot of patient sampling. | Documented |
+| 7 | The Mapbox token is public by design. | Anyone can reuse it against my quota. | Restrict it to the Vercel domain in the Mapbox dashboard |
+
+What I changed:
+
+- **Session tokens (1).** `join` now creates the id on the server and returns a
+  random 32-byte token. Only its sha256 is stored. Every other endpoint looks
+  the caller up by token (a header, or the body for `sendBeacon`). The client
+  never sends its own id, and the poll still only shows public ids. If the
+  session is gone (say the tab slept past the 15 s timeout), poll returns 401
+  and the app goes back to the entry screen instead of freezing.
+- **Who is talking to whom (2).** `Presence.peerId` records who you're
+  requesting or connected to. `signal` only delivers what fits that state:
+  accept and decline only answer a real request, WebRTC messages only go
+  between two connected peers, and end only goes to your own peer. The updates
+  are conditional (`updateMany` with a `where`), so two racing requests can't
+  both win; I avoided transactions over the Neon pooler. When someone leaves
+  or goes stale, the server frees their partner and sends them an `end`. That
+  replaced the client-side beacon from Phase 1, which could lose a race with
+  `leave`.
+- **Rate limits (3).** A small `RateLimit` table with one-minute windows,
+  counted in Postgres so every serverless instance agrees:
+  - 60 joins per IP (the IP is hashed, never stored);
+  - 300 signals per session (a call setup is about 20–40);
+  - 10 connection requests per session.
+- **Headers (4).** A CSP that allows only what Mapbox needs (`*.mapbox.com`
+  and a blob: worker), `frame-ancestors 'none'`, a Permissions-Policy limiting
+  camera, mic and location to this site, `no-referrer`, `nosniff`, and
+  `no-store` on the API. I also removed a leftover ngrok host from
+  `allowedDevOrigins`.
+
+How I checked it: a small script that attacks the API the old way (reading
+someone else's mailbox, kicking by id, spoofing `fromId`, accepting without a
+request, two accepts at once, request and join floods) and expects 401, 409 or
+429. Then the full two-browser flow again, against a production build.
+
+Trade-offs:
+
+- Requests keep being refused with 409 instead of being queued. That's simpler,
+  and the UI recovers from it.
+- For 5, the real fix is TURN with `iceTransportPolicy: "relay"`. That needs an
+  external relay service, which the brief rules out, so I documented it
+  instead.
+- The schema changes are additive and nullable, so `prisma db push` on the
+  live database never broke the running version. I followed the README and
+  used `db push`; `prisma/migrations` still only has the initial migration.
