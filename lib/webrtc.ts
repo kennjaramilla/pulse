@@ -1,8 +1,11 @@
+import { veilTrack } from "@/lib/veil";
+
 export type DescType = "offer" | "answer" | "ice";
 export type PeerControl =
   | "video-request"
   | "video-accept"
   | "video-decline"
+  | "video-reveal"
   | "video-end";
 
 interface PeerCallbacks {
@@ -26,6 +29,7 @@ export class PeerSession {
   private makingOffer = false;
   private ignoreOffer = false;
   private localStream: MediaStream | null = null;
+  private veil: ReturnType<typeof veilTrack> | null = null;
   private closed = false;
   private readonly cb: PeerCallbacks;
   private pendingCandidates: RTCIceCandidateInit[] = [];
@@ -148,22 +152,47 @@ export class PeerSession {
     }
   }
 
+  // Starts the camera but sends a blurred copy until reveal() is called.
+  // Returns what the other person sees, for the self-preview.
   async startVideo(): Promise<MediaStream> {
     if (!this.localStream) {
       this.localStream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true,
       });
-      for (const track of this.localStream.getTracks()) {
-        this.pc.addTrack(track, this.localStream);
+      const [camera] = this.localStream.getVideoTracks();
+      const [mic] = this.localStream.getAudioTracks();
+      this.veil = veilTrack(camera);
+      const outgoing = new MediaStream([this.veil.track, mic]);
+      for (const track of outgoing.getTracks()) {
+        this.pc.addTrack(track, outgoing);
       }
     }
-    return this.localStream;
+    return this.preview();
+  }
+
+  // Swap the blurred track for the real camera. replaceTrack needs no
+  // renegotiation, so the other side just starts seeing the real picture.
+  async reveal(): Promise<MediaStream | null> {
+    if (!this.localStream || !this.veil) return null;
+    const [camera] = this.localStream.getVideoTracks();
+    const sender = this.pc.getSenders().find((s) => s.track === this.veil?.track);
+    await sender?.replaceTrack(camera);
+    this.veil.stop();
+    this.veil = null;
+    return this.preview();
+  }
+
+  private preview() {
+    const video = this.veil?.track ?? this.localStream!.getVideoTracks()[0];
+    return new MediaStream([video]);
   }
 
   stopVideo() {
     if (this.localStream) {
       for (const track of this.localStream.getTracks()) track.stop();
+      this.veil?.stop();
+      this.veil = null;
       for (const sender of this.pc.getSenders()) {
         if (sender.track) {
           try {

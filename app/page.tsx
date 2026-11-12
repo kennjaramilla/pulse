@@ -35,6 +35,9 @@ export default function Home() {
   const [notice, setNotice] = useState<string | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  // Video starts blurred on both sides; each person reveals when they're ready.
+  const [revealed, setRevealed] = useState(false);
+  const [theyRevealed, setTheyRevealed] = useState(false);
   const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(
     null,
   );
@@ -120,6 +123,8 @@ export default function Home() {
           ps.startVideo()
             .then((stream) => {
               setLocalStream(stream);
+              setRevealed(false);
+              setTheyRevealed(false);
               setVideo("active");
             })
             .catch(() => {
@@ -134,6 +139,9 @@ export default function Home() {
           setVideo("none");
           showNotice("Video declined.");
         }
+        break;
+      case "video-reveal":
+        setTheyRevealed(true);
         break;
       case "video-end":
         ps?.stopVideo();
@@ -204,6 +212,8 @@ export default function Home() {
     ps.startVideo()
       .then((stream) => {
         setLocalStream(stream);
+        setRevealed(false);
+        setTheyRevealed(false);
         ps.sendControl("video-accept");
         setVideo("active");
       })
@@ -217,6 +227,17 @@ export default function Home() {
   function declineVideo() {
     peerRef.current?.sendControl("video-decline");
     setVideo("none");
+  }
+
+  function revealMe() {
+    const ps = peerRef.current;
+    if (!ps) return;
+    void ps.reveal().then((stream) => {
+      if (!stream) return;
+      setLocalStream(stream);
+      setRevealed(true);
+      ps.sendControl("video-reveal");
+    });
   }
 
   function endVideo() {
@@ -431,6 +452,9 @@ export default function Home() {
         <VideoPanel
           localStream={localStream}
           remoteStream={remoteStream}
+          revealed={revealed}
+          theyRevealed={theyRevealed}
+          onReveal={revealMe}
           onEnd={endVideo}
         />
       )}
