@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { HangUpIcon, SendIcon, VideoIcon } from "./icons";
+import { BlockIcon, HangUpIcon, SendIcon, VideoIcon } from "./icons";
 
 export interface ChatMessage {
   id: number;
@@ -17,6 +17,7 @@ export default function ChatPanel({
   distance,
   onSend,
   onStartVideo,
+  onBlock,
   onEnd,
 }: {
   messages: ChatMessage[];
@@ -26,6 +27,7 @@ export default function ChatPanel({
   distance?: string;
   onSend: (text: string) => void;
   onStartVideo: () => void;
+  onBlock: () => void;
   onEnd: () => void;
 }) {
   const [draft, setDraft] = useState("");
@@ -65,6 +67,14 @@ export default function ChatPanel({
           className="grid size-10 place-items-center rounded-full bg-white/10 transition hover:bg-white/20 disabled:opacity-40"
         >
           <VideoIcon />
+        </button>
+        <button
+          onClick={onBlock}
+          aria-label="Block"
+          title="Leave and block. They can't reach you again."
+          className="grid size-10 place-items-center rounded-full bg-white/10 text-zinc-300 transition hover:bg-white/20 hover:text-white"
+        >
+          <BlockIcon />
         </button>
         <button
           onClick={onEnd}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { HangUpIcon } from "./icons";
+import { BlockIcon, HangUpIcon } from "./icons";
 
 export default function VideoPanel({
   localStream,
@@ -9,6 +9,7 @@ export default function VideoPanel({
   revealed,
   theyRevealed,
   onReveal,
+  onBlock,
   onEnd,
 }: {
   localStream: MediaStream | null;
@@ -16,6 +17,7 @@ export default function VideoPanel({
   revealed: boolean; // we're sending the real camera
   theyRevealed: boolean;
   onReveal: () => void;
+  onBlock: () => void;
   onEnd: () => void;
 }) {
   const localRef = useRef<HTMLVideoElement>(null);
@@ -77,6 +79,14 @@ export default function VideoPanel({
             Show my face
           </button>
         )}
+        <button
+          onClick={onBlock}
+          aria-label="Block"
+          title="Leave and block. They can't reach you again."
+          className="grid size-12 place-items-center rounded-full bg-white/15 text-white shadow-lg transition hover:bg-white/25"
+        >
+          <BlockIcon />
+        </button>
         <button
           onClick={onEnd}
           className="flex items-center gap-2 rounded-full bg-red-500 px-6 py-3 font-semibold text-white shadow-lg transition hover:bg-red-400"

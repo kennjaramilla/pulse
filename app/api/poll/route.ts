@@ -50,10 +50,11 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 3) Online peers, excluding self.
+  // 3) Online peers, excluding self and anyone either side has blocked.
   const peers = await prisma.presence.findMany({
     where: {
-      id: { not: id },
+      id: { notIn: [id, ...me.blockedIds] },
+      NOT: { blockedIds: { has: id } },
       lastSeen: { gte: staleCutoff },
     },
     select: { id: true, lat: true, lng: true, busy: true },

@@ -44,6 +44,14 @@ export async function sendSignal(
   }
 }
 
+export async function blockPeer(token: string, peerId: string): Promise<void> {
+  await fetch("/api/block", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", [TOKEN_HEADER]: token },
+    body: JSON.stringify({ peerId }),
+  });
+}
+
 // Fire-and-forget POST that survives the tab closing. sendBeacon can't set
 // headers, so the token goes in the body.
 function beacon(url: string, data: unknown): void {

@@ -38,3 +38,10 @@ export const SendIcon = (p: IconProps) => (
     <path d="m21.9 2.1-10.9 10.9" />
   </Icon>
 );
+
+export const BlockIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="10" />
+    <path d="m4.9 4.9 14.2 14.2" />
+  </Icon>
+);

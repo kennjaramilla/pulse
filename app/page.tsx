@@ -11,7 +11,7 @@ import Toast from "./components/Toast";
 import { VideoIcon } from "./components/icons";
 import { dotColor } from "@/lib/color";
 import { describeDistance } from "@/lib/geo";
-import { join, leave, poll, sendSignal, SessionExpiredError } from "@/lib/api";
+import { blockPeer, join, leave, poll, sendSignal, SessionExpiredError } from "@/lib/api";
 import { PeerSession, type DescType, type PeerControl } from "@/lib/webrtc";
 import { POLL_INTERVAL_MS } from "@/lib/presence";
 import { type PeerDot, type SignalMsg } from "@/lib/types";
@@ -198,6 +198,15 @@ export default function Home() {
       void sendSignal(token, c.peerId, "end");
     }
     teardown();
+  }
+
+  // Leave and make sure they can't find or request us again this session.
+  function blockAndLeave() {
+    const c = connRef.current;
+    if (c.kind !== "connecting" && c.kind !== "connected") return;
+    void blockPeer(token, c.peerId);
+    endConnection();
+    showNotice("Blocked. They can't reach you again.");
   }
 
   function startVideoRequest() {
@@ -429,6 +438,7 @@ export default function Home() {
             addMessage(true, text);
           }}
           onStartVideo={startVideoRequest}
+          onBlock={blockAndLeave}
           onEnd={endConnection}
         />
       )}
@@ -455,6 +465,7 @@ export default function Home() {
           revealed={revealed}
           theyRevealed={theyRevealed}
           onReveal={revealMe}
+          onBlock={blockAndLeave}
           onEnd={endVideo}
         />
       )}

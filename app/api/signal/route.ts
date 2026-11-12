@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 
   const target = await prisma.presence.findUnique({
     where: { id: toId },
-    select: { busy: true, peerId: true },
+    select: { busy: true, peerId: true, blockedIds: true },
   });
 
   // The updates below are conditional (updateMany + where) so two requests
@@ -73,8 +73,11 @@ export async function POST(request: NextRequest) {
   switch (signalType) {
     case "request": {
       if (me.peerId) return conflict();
-      // Target offline or already occupied: auto-decline instead of delivering.
-      if (!target || target.peerId) {
+      // Target offline, occupied, or one of us blocked the other:
+      // auto-decline instead of delivering.
+      const blocked =
+        me.blockedIds.includes(toId) || target?.blockedIds.includes(fromId);
+      if (!target || target.peerId || blocked) {
         await deliver(toId, fromId, "decline");
         return Response.json({ ok: true, autoDeclined: true });
       }
