@@ -1,11 +1,10 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { authenticate, readToken, unauthorized } from "@/lib/auth";
+import { allowSignal, tooMany } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const MAX_BLOCKS = 50;
 
 // POST /api/block — body { peerId }. For the rest of this session the two of
 // you can't request each other and don't see each other's dots. Like
@@ -26,7 +25,10 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "invalid peer" }, { status: 400 });
   }
 
-  if (!me.blockedIds.includes(peerId) && me.blockedIds.length < MAX_BLOCKS) {
+  // Counts toward the normal signal limit, which also bounds the list size.
+  if (!(await allowSignal(me.id, "block"))) return tooMany();
+
+  if (!me.blockedIds.includes(peerId)) {
     await prisma.presence.update({
       where: { id: me.id },
       data: { blockedIds: { push: peerId } },
