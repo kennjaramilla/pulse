@@ -45,7 +45,7 @@ export default function ChatPanel({
 
   // Bottom sheet on phones (the map stays visible above), side panel on desktop.
   return (
-    <div className="glass absolute inset-x-0 bottom-0 z-20 flex h-[62dvh] animate-rise flex-col rounded-t-3xl shadow-2xl sm:inset-x-auto sm:inset-y-4 sm:right-4 sm:h-auto sm:w-96 sm:rounded-3xl">
+    <div className="glass absolute inset-x-0 bottom-0 z-20 flex h-[62dvh] animate-rise flex-col rounded-t-3xl shadow-2xl sm:inset-x-auto sm:bottom-4 sm:right-4 sm:top-20 sm:h-auto sm:w-96 sm:rounded-3xl">
       <header className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
         <span
           className="size-9 shrink-0 rounded-full"
