@@ -21,11 +21,13 @@ export default function WorldMap({
   me,
   onPeerClick,
   canConnect,
+  spinning,
 }: {
   peers: PeerDot[];
   me: { lat: number; lng: number } | null;
   onPeerClick: (id: string) => void;
   canConnect: boolean;
+  spinning: boolean; // slow idle rotation behind the entry screen
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
@@ -55,10 +57,20 @@ export default function WorldMap({
       const map = new mapboxgl.Map({
         container: containerRef.current,
         style: "mapbox://styles/mapbox/dark-v11",
-        // Open centered on the user if we know where they are, else world view.
-        center: me ? [me.lng, me.lat] : [0, 20],
-        zoom: me ? 4 : 1.4,
+        projection: "globe",
+        center: [100, 15],
+        zoom: 1.6,
         attributionControl: true,
+      });
+      map.on("style.load", () => {
+        // Night-sky atmosphere around the globe.
+        map.setFog({
+          color: "rgb(14, 17, 30)",
+          "high-color": "rgb(40, 34, 90)",
+          "horizon-blend": 0.08,
+          "space-color": "rgb(7, 9, 16)",
+          "star-intensity": 0.4,
+        });
       });
       map.on("load", () => {
         if (!cancelled) setReady(true);
@@ -76,9 +88,29 @@ export default function WorldMap({
       mapRef.current = null;
       setReady(false);
     };
-    // `me` is only read for the initial center; we don't want to re-init on change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Spin the globe slowly while the entry screen is up.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !spinning) return;
+    let frame = 0;
+    const spin = () => {
+      const center = map.getCenter();
+      center.lng -= 0.04;
+      map.jumpTo({ center });
+      frame = requestAnimationFrame(spin);
+    };
+    frame = requestAnimationFrame(spin);
+    return () => cancelAnimationFrame(frame);
+  }, [ready, spinning]);
+
+  // Once we know where the user is, fly down to them.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !me) return;
+    map.flyTo({ center: [me.lng, me.lat], zoom: 4, duration: 2800, essential: true });
+  }, [me, ready]);
 
   // Show / move the user's own "you are here" pin.
   useEffect(() => {
@@ -156,7 +188,7 @@ export default function WorldMap({
 
   return (
     <div className="absolute inset-0">
-      <div ref={containerRef} className="h-full w-full bg-zinc-900" />
+      <div ref={containerRef} className="h-full w-full bg-ink" />
 
       {!TOKEN && (
         <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
@@ -169,9 +201,11 @@ export default function WorldMap({
       )}
 
       {/* Online count */}
-      <div className="absolute bottom-4 left-4 rounded-full bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur">
-        {peers.length} online
-      </div>
+      {!spinning && (
+        <div className="absolute bottom-4 left-4 rounded-full bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur">
+          {peers.length} online
+        </div>
+      )}
     </div>
   );
 }

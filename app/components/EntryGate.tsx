@@ -39,30 +39,39 @@ export default function EntryGate({
   }
 
   return (
-    <div className="flex min-h-full flex-1 flex-col items-center justify-center gap-8 bg-zinc-950 p-6 text-zinc-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold tracking-tight">Pulse</h1>
-        <p className="mt-2 max-w-sm text-zinc-400">
-          A living globe of anonymous strangers. Drop onto the map and connect.
+    <div className="absolute inset-0 z-40 flex flex-col items-center justify-end bg-[radial-gradient(ellipse_at_center,rgb(7_9_16/0.45)_20%,rgb(7_9_16/0.9)_75%)] px-6 pb-16 sm:justify-center sm:pb-6">
+      <div className="flex max-w-md animate-rise flex-col items-center text-center">
+        <h1 className="flex items-center gap-3 text-5xl font-semibold tracking-tight sm:text-6xl">
+          <span className="relative flex size-3">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-pulse opacity-75" />
+            <span className="relative inline-flex size-3 rounded-full bg-pulse" />
+          </span>
+          Pulse
+        </h1>
+        <p className="mt-4 text-lg text-zinc-300">
+          A living globe of anonymous strangers.
+          <br />
+          Tap a dot, say hello.
+        </p>
+
+        <button
+          onClick={enter}
+          disabled={status === "locating"}
+          className="mt-8 rounded-full bg-pulse px-9 py-3.5 font-semibold text-white shadow-[0_0_40px_-6px] shadow-pulse transition hover:scale-[1.03] hover:bg-pulse-soft active:scale-100 disabled:opacity-60"
+        >
+          {status === "locating" ? "Finding you…" : "Enter Pulse"}
+        </button>
+
+        {status === "error" && (
+          <p className="mt-4 text-sm text-red-300">{error}</p>
+        )}
+
+        <p className="mt-8 text-xs leading-relaxed text-zinc-400">
+          No sign-up. Your dot sits 1–3&nbsp;km from where you really are.
+          <br />
+          Nothing is stored. Close the tab and you&rsquo;re gone.
         </p>
       </div>
-
-      <button
-        onClick={enter}
-        disabled={status === "locating"}
-        className="rounded-full bg-emerald-400 px-8 py-3 font-semibold text-zinc-950 transition hover:bg-emerald-300 disabled:opacity-60"
-      >
-        {status === "locating" ? "Locating…" : "Enter Pulse"}
-      </button>
-
-      {status === "error" && (
-        <p className="max-w-sm text-center text-sm text-red-400">{error}</p>
-      )}
-
-      <p className="max-w-sm text-center text-xs text-zinc-500">
-        No sign-up. Your dot is placed 1–3&nbsp;km from your real location.
-        Nothing is stored — closing the tab ends everything.
-      </p>
     </div>
   );
 }

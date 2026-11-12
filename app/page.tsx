@@ -340,10 +340,6 @@ export default function Home() {
     setPhase("live");
   }
 
-  if (phase === "gate") {
-    return <EntryGate onReady={handleReady} />;
-  }
-
   const inChat = conn.kind === "connecting" || conn.kind === "connected";
 
   return (
@@ -353,7 +349,10 @@ export default function Home() {
         me={myLocation}
         onPeerClick={requestConnection}
         canConnect={conn.kind === "idle"}
+        spinning={phase === "gate"}
       />
+
+      {phase === "gate" && <EntryGate onReady={handleReady} />}
 
       {notice && (
         <div className="absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-full bg-zinc-800/90 px-4 py-2 text-sm text-zinc-100 shadow-lg backdrop-blur">
