@@ -131,3 +131,40 @@ everything else should get out of its way.
 
 I kept the existing component structure. It's a restyle, not a rewrite, and no
 UI library was added (the icons are a few inline SVGs).
+
+## Phase 4 — Make it better
+
+**What I built: video that starts blurred, plus leave & block.**
+
+Why: the scary moment in random video chat is the first second, before you
+know who's on the other side. Text chat already lets two people feel each
+other out; video throws that away all at once. So in Pulse:
+
+- **Video starts as a blur for both people.** Voice works straight away, so
+  you can say hi first.
+- **Each person taps "Show my face" when they're ready.** The other side sees
+  a "They're still blurred" label until then, and your self-view shows exactly
+  what they're getting.
+- **The blur happens on the sender's side.** The camera is drawn into a 16×12
+  canvas, scaled back up, and *that* track is what WebRTC sends
+  (`lib/veil.ts`). On reveal, `RTCRtpSender.replaceTrack` swaps in the real
+  camera with no renegotiation. So your real face never leaves your device
+  until you choose. It's not a CSS blur someone could remove in DevTools.
+- **Block** (in the chat header and on the video screen) ends the
+  conversation. For the rest of the session, neither of you can request the
+  other, and you disappear from each other's maps. It's enforced on the server
+  (`Presence.blockedIds`, checked in `signal` and `poll`) and, like everything
+  in Pulse, it's gone when the session ends. Nothing is stored about anyone.
+
+How I tested it: two browser profiles with fake cameras. The other side gets a
+blur until reveal and the real picture after. Reveal resets on the next video
+call. Blocking hides both dots and auto-declines new requests.
+
+**What I'd do next with more time:**
+
+- Blur by default on the *remote* side too, so even a modified client that
+  skips the veil gets blurred on my screen until I choose to look.
+- A "report" that's counted per session (rate-limited and anonymous), so
+  repeat offenders could be slowed down without accounts.
+- TURN relay-only mode, so strangers can't see each other's IP (see Phase 3).
+- A small Playwright suite in CI covering the two-user flow.
