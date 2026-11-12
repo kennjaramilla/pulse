@@ -87,6 +87,7 @@ export default function WorldMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready || !spinning) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let frame = 0;
     const spin = () => {
       const center = map.getCenter();
@@ -102,7 +103,8 @@ export default function WorldMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready || !me) return;
-    map.flyTo({ center: [me.lng, me.lat], zoom: 4, duration: 2800, essential: true });
+    // Not `essential`, so Mapbox skips the animation for reduced-motion users.
+    map.flyTo({ center: [me.lng, me.lat], zoom: 4, duration: 2800 });
   }, [me, ready]);
 
   // Show / move the user's own "you are here" pin.
@@ -153,7 +155,6 @@ export default function WorldMap({
           const el = document.createElement("button");
           el.className = "pulse-dot";
           el.style.color = dotColor(peer.id);
-          el.setAttribute("aria-label", "Connect with this stranger");
           el.innerHTML = `<span class="pulse-dot-core"></span>`;
           el.addEventListener("click", (e) => {
             e.stopPropagation();
@@ -167,6 +168,10 @@ export default function WorldMap({
         const el = marker.getElement();
         el.classList.toggle("is-busy", peer.busy);
         el.title = peer.busy ? "In a conversation" : "Tap to say hi";
+        el.setAttribute(
+          "aria-label",
+          peer.busy ? "Stranger, in a conversation" : "Connect with this stranger",
+        );
       }
 
       // Drop markers for peers that went offline / got filtered out.

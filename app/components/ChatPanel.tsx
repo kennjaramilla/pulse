@@ -62,7 +62,7 @@ export default function ChatPanel({
         <button
           onClick={onStartVideo}
           disabled={!connected || videoBusy}
-          aria-label="Video"
+          aria-label="Start video"
           title="Start a video call"
           className="grid size-10 place-items-center rounded-full bg-white/10 transition hover:bg-white/20 disabled:opacity-40"
         >

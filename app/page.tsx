@@ -320,6 +320,7 @@ export default function Home() {
   // Go back to the entry screen so the user can rejoin with a new session.
   function expireSession() {
     teardown();
+    setPeers([]);
     setToken("");
     setPhase("gate");
   }
