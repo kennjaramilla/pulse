@@ -45,3 +45,19 @@ export function isValidLatLng(lat: unknown, lng: unknown): boolean {
     lng <= 180
   );
 }
+
+// Rough "how far away" for the UI. Both points are already 1–3 km fuzzy, so
+// it's rounded and never more precise than that.
+export function describeDistance(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): string {
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const h =
+    Math.sin(rad(b.lat - a.lat) / 2) ** 2 +
+    Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(rad(b.lng - a.lng) / 2) ** 2;
+  const km = 2 * 6371 * Math.asin(Math.sqrt(h));
+  if (km < 25) return "Somewhere near you";
+  if (km < 1000) return `About ${Math.round(km / 10) * 10} km away`;
+  return `About ${Math.round(km / 100) * 100} km away`;
+}

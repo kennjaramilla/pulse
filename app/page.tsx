@@ -7,6 +7,10 @@ import ConnectionPrompt from "./components/ConnectionPrompt";
 import ChatPanel, { type ChatMessage } from "./components/ChatPanel";
 import VideoPanel from "./components/VideoPanel";
 import TopBar from "./components/TopBar";
+import Toast from "./components/Toast";
+import { VideoIcon } from "./components/icons";
+import { dotColor } from "@/lib/color";
+import { describeDistance } from "@/lib/geo";
 import { join, leave, poll, sendSignal, SessionExpiredError } from "@/lib/api";
 import { PeerSession, type DescType, type PeerControl } from "@/lib/webrtc";
 import { POLL_INTERVAL_MS } from "@/lib/presence";
@@ -342,6 +346,11 @@ export default function Home() {
   }
 
   const inChat = conn.kind === "connecting" || conn.kind === "connected";
+  // Who we're dealing with right now, for colours and "about 300 km away".
+  const peerId = conn.kind === "idle" ? null : conn.peerId;
+  const peer = peers.find((p) => p.id === peerId);
+  const peerColor = peerId ? dotColor(peerId) : undefined;
+  const peerDistance = peer && myLocation ? describeDistance(myLocation, peer) : undefined;
 
   return (
     <main className="fixed inset-0 overflow-hidden">
@@ -359,27 +368,27 @@ export default function Home() {
         <TopBar online={peers.length} />
       )}
 
-      {notice && (
-        <div className="absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-full bg-zinc-800/90 px-4 py-2 text-sm text-zinc-100 shadow-lg backdrop-blur">
-          {notice}
-        </div>
-      )}
+      {notice && <Toast>{notice}</Toast>}
 
       {conn.kind === "requesting" && (
-        <div className="absolute left-1/2 top-20 z-30 flex -translate-x-1/2 items-center gap-3 rounded-full bg-zinc-800/90 px-4 py-2 text-sm text-zinc-100 shadow-lg backdrop-blur">
-          <span>Requesting connection…</span>
+        <Toast>
+          <span className="size-2 animate-ping rounded-full" style={{ background: peerColor }} />
+          <span>Waiting for them to answer…</span>
           <button
             onClick={cancelRequest}
-            className="rounded-full bg-zinc-700 px-3 py-1 text-xs hover:bg-zinc-600"
+            className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium hover:bg-white/20"
           >
             Cancel
           </button>
-        </div>
+        </Toast>
       )}
 
       {conn.kind === "incoming" && (
         <ConnectionPrompt
-          title="A stranger wants to connect"
+          title="Someone wants to talk"
+          subtitle={peerDistance}
+          color={peerColor}
+          icon={<span className="text-2xl">👋</span>}
           acceptLabel="Accept"
           declineLabel="Decline"
           onAccept={acceptIncoming}
@@ -401,16 +410,14 @@ export default function Home() {
         />
       )}
 
-      {video === "requesting" && (
-        <div className="absolute bottom-24 left-1/2 z-30 -translate-x-1/2 rounded-full bg-zinc-800/90 px-4 py-2 text-sm text-zinc-100 shadow-lg backdrop-blur">
-          Waiting for stranger to accept video…
-        </div>
-      )}
+      {video === "requesting" && <Toast>Waiting for them to turn on video…</Toast>}
 
       {video === "incoming" && (
         <ConnectionPrompt
-          title="Start video call?"
-          subtitle="The stranger wants to turn on video."
+          title="Turn on video?"
+          subtitle="They'd like to see each other. Your camera stays off unless you accept."
+          color={peerColor}
+          icon={<VideoIcon className="size-6" />}
           acceptLabel="Accept"
           declineLabel="Decline"
           onAccept={acceptVideo}

@@ -4,17 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import type { Map as MapboxMap, Marker } from "mapbox-gl";
 import type { PeerDot } from "@/lib/types";
+import { dotColor } from "@/lib/color";
 
 // No placeholder fallback: a fake token fails silently and hides the setup hint below.
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-
-function dotColor(id: string): string {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  }
-  return `hsl(${Math.abs(hash) % 360}, 70%, 60%)`;
-}
 
 export default function WorldMap({
   peers,
