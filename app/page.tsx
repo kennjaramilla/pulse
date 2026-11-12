@@ -6,6 +6,7 @@ import WorldMap from "./components/WorldMap";
 import ConnectionPrompt from "./components/ConnectionPrompt";
 import ChatPanel, { type ChatMessage } from "./components/ChatPanel";
 import VideoPanel from "./components/VideoPanel";
+import TopBar from "./components/TopBar";
 import { join, leave, poll, sendSignal, SessionExpiredError } from "@/lib/api";
 import { PeerSession, type DescType, type PeerControl } from "@/lib/webrtc";
 import { POLL_INTERVAL_MS } from "@/lib/presence";
@@ -352,7 +353,11 @@ export default function Home() {
         spinning={phase === "gate"}
       />
 
-      {phase === "gate" && <EntryGate onReady={handleReady} />}
+      {phase === "gate" ? (
+        <EntryGate onReady={handleReady} />
+      ) : (
+        <TopBar online={peers.length} />
+      )}
 
       {notice && (
         <div className="absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-full bg-zinc-800/90 px-4 py-2 text-sm text-zinc-100 shadow-lg backdrop-blur">
