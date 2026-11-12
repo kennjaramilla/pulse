@@ -124,10 +124,9 @@ export default function WorldMap({
       if (!meMarkerRef.current) {
         const el = document.createElement("div");
         el.className = "pulse-me";
-        el.title = "You are here";
-        el.innerHTML = `<span class="pulse-me-label">Me</span>📍`;
-        // anchor "bottom" → the pin's tip sits on the exact coordinate.
-        meMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: "bottom" })
+        el.title = "You (only you see this spot; others see your dot 1–3 km away)";
+        el.innerHTML = `<span class="pulse-me-label">You</span>`;
+        meMarkerRef.current = new mapboxgl.Marker({ element: el })
           .setLngLat([me.lng, me.lat])
           .addTo(map);
       } else {
@@ -156,10 +155,13 @@ export default function WorldMap({
         seen.add(peer.id);
         let marker = markers.get(peer.id);
         if (!marker) {
+          // Mapbox positions the marker element with a transform, so all the
+          // styling (and the hover scale) lives on an inner span.
           const el = document.createElement("button");
           el.className = "pulse-dot";
-          el.style.background = dotColor(peer.id);
-          el.title = "Tap to connect";
+          el.style.color = dotColor(peer.id);
+          el.setAttribute("aria-label", "Connect with this stranger");
+          el.innerHTML = `<span class="pulse-dot-core"></span>`;
           el.addEventListener("click", (e) => {
             e.stopPropagation();
             if (canConnectRef.current) onPeerClickRef.current(peer.id);
@@ -169,7 +171,9 @@ export default function WorldMap({
             .addTo(map);
           markers.set(peer.id, marker);
         }
-        marker.getElement().style.opacity = peer.busy ? "0.35" : "1";
+        const el = marker.getElement();
+        el.classList.toggle("is-busy", peer.busy);
+        el.title = peer.busy ? "In a conversation" : "Tap to say hi";
       }
 
       // Drop markers for peers that went offline / got filtered out.
