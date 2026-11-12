@@ -97,3 +97,37 @@ Trade-offs:
 - The schema changes are additive and nullable, so `prisma db push` on the
   live database never broke the running version. I followed the README and
   used `db push`; `prisma/migrations` still only has the initial migration.
+
+## Phase 2 — Make it good
+
+The idea: Pulse is "a living globe", so the globe should be the hero and
+everything else should get out of its way.
+
+- **The globe is always there.** The map now renders behind the entry screen
+  as a slowly spinning 3D globe (Mapbox `projection: "globe"` with a night-sky
+  fog), and flies down to you when you join. Before, it was a plain landing
+  page followed by a flat map.
+- **One accent colour.** Dark-only theme, a "pulse" pink for every primary
+  action, and the Geist font that was loaded but never used (the body was
+  hard-coded to Arial). Every overlay uses the same frosted `glass` style.
+- **Dots that feel alive.** Each person gets a colour from their id, with a
+  soft glow and a pulse ring. Busy people are dimmed and stop pulsing. Taps get
+  a 32px target on phones. The old hover scale never worked, because Mapbox
+  positions the marker element with `transform`, so the styling now lives on
+  an inner span. Your own spot is a white dot with a pink halo instead of a 📍.
+- **Context in the prompts.** "Someone wants to talk · About 570 km away",
+  shown in that person's colour. The distance is rounded, and both points are
+  already fuzzy. The video prompt says your camera stays off unless you
+  accept.
+- **Chat as a bottom sheet on phones**, so the map stays visible, and as a
+  side panel on desktop. Bubbles, an icon-only header with labels for screen
+  readers, and a send button.
+- **Video screen:** the stranger full-screen, a mirrored self-view, and a
+  floating control bar.
+- Small things: a top bar with the live count ("Nobody else here yet. Share
+  the link!" when you're alone), status toasts instead of grey pills,
+  `prefers-reduced-motion` respected, and the theme colour set for mobile
+  browsers.
+
+I kept the existing component structure. It's a restyle, not a rewrite, and no
+UI library was added (the icons are a few inline SVGs).
