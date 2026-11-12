@@ -69,13 +69,20 @@ export default function Home() {
     setMessages((prev) => [...prev, { id: msgId.current++, mine, text }]);
   }
 
+  // Back to plain chat: no streams, and both sides start blurred next time.
+  function resetVideo() {
+    setLocalStream(null);
+    setRemoteStream(null);
+    setRevealed(false);
+    setTheyRevealed(false);
+    setVideo("none");
+  }
+
   function teardown(message?: string) {
     if (requestTimer.current) clearTimeout(requestTimer.current);
     peerRef.current?.close();
     peerRef.current = null;
-    setLocalStream(null);
-    setRemoteStream(null);
-    setVideo("none");
+    resetVideo();
     setMessages([]);
     setConn({ kind: "idle" });
     if (message) showNotice(message);
@@ -123,11 +130,10 @@ export default function Home() {
           ps.startVideo()
             .then((stream) => {
               setLocalStream(stream);
-              setRevealed(false);
-              setTheyRevealed(false);
               setVideo("active");
             })
             .catch(() => {
+              if (peerRef.current !== ps) return; // the chat ended meanwhile
               setVideo("none");
               ps.sendControl("video-end");
               showNotice("Camera unavailable.");
@@ -145,9 +151,7 @@ export default function Home() {
         break;
       case "video-end":
         ps?.stopVideo();
-        setLocalStream(null);
-        setRemoteStream(null);
-        setVideo("none");
+        resetVideo();
         break;
     }
   }
@@ -221,12 +225,11 @@ export default function Home() {
     ps.startVideo()
       .then((stream) => {
         setLocalStream(stream);
-        setRevealed(false);
-        setTheyRevealed(false);
         ps.sendControl("video-accept");
         setVideo("active");
       })
       .catch(() => {
+        if (peerRef.current !== ps) return; // the chat ended meanwhile
         ps.sendControl("video-decline");
         setVideo("none");
         showNotice("Camera unavailable.");
@@ -253,9 +256,7 @@ export default function Home() {
     const ps = peerRef.current;
     ps?.stopVideo();
     ps?.sendControl("video-end");
-    setLocalStream(null);
-    setRemoteStream(null);
-    setVideo("none");
+    resetVideo();
   }
 
   function processSignal(sig: SignalMsg) {

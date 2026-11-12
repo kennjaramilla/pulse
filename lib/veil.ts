@@ -18,7 +18,8 @@ export function veilTrack(camera: MediaStreamTrack) {
   const outCtx = out.getContext("2d")!;
   outCtx.imageSmoothingEnabled = true;
 
-  // setInterval rather than requestAnimationFrame, which pauses in background tabs.
+  // setInterval rather than requestAnimationFrame, which stops entirely in
+  // background tabs (intervals just slow down to about once a second).
   const timer = setInterval(() => {
     tinyCtx.drawImage(video, 0, 0, tiny.width, tiny.height);
     outCtx.drawImage(tiny, 0, 0, out.width, out.height);
@@ -34,3 +35,5 @@ export function veilTrack(camera: MediaStreamTrack) {
     },
   };
 }
+
+export type Veil = ReturnType<typeof veilTrack>;

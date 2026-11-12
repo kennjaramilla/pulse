@@ -1,4 +1,4 @@
-import { veilTrack } from "@/lib/veil";
+import { veilTrack, type Veil } from "@/lib/veil";
 
 export type DescType = "offer" | "answer" | "ice";
 export type PeerControl =
@@ -29,7 +29,8 @@ export class PeerSession {
   private makingOffer = false;
   private ignoreOffer = false;
   private localStream: MediaStream | null = null;
-  private veil: ReturnType<typeof veilTrack> | null = null;
+  private veil: Veil | null = null;
+  private opening: Promise<void> | null = null;
   private closed = false;
   private readonly cb: PeerCallbacks;
   private pendingCandidates: RTCIceCandidateInit[] = [];
@@ -155,31 +156,43 @@ export class PeerSession {
   // Starts the camera but sends a blurred copy until reveal() is called.
   // Returns what the other person sees, for the self-preview.
   async startVideo(): Promise<MediaStream> {
-    if (!this.localStream) {
-      this.localStream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-      const [camera] = this.localStream.getVideoTracks();
-      const [mic] = this.localStream.getAudioTracks();
-      this.veil = veilTrack(camera);
-      const outgoing = new MediaStream([this.veil.track, mic]);
-      for (const track of outgoing.getTracks()) {
-        this.pc.addTrack(track, outgoing);
-      }
-    }
+    // Reuse the same attempt if this is called twice (e.g. a double tap).
+    this.opening ??= this.openCamera();
+    await this.opening;
     return this.preview();
+  }
+
+  private async openCamera() {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
+    // The chat may have ended while the permission prompt was open.
+    if (this.closed) {
+      for (const track of stream.getTracks()) track.stop();
+      throw new Error("connection closed");
+    }
+    this.localStream = stream;
+    const [camera] = stream.getVideoTracks();
+    const [mic] = stream.getAudioTracks();
+    this.veil = veilTrack(camera);
+    const outgoing = new MediaStream([this.veil.track, mic]);
+    for (const track of outgoing.getTracks()) {
+      this.pc.addTrack(track, outgoing);
+    }
   }
 
   // Swap the blurred track for the real camera. replaceTrack needs no
   // renegotiation, so the other side just starts seeing the real picture.
   async reveal(): Promise<MediaStream | null> {
-    if (!this.localStream || !this.veil) return null;
+    const veil = this.veil;
+    if (!this.localStream || !veil) return null;
+    this.veil = null; // a second tap does nothing
     const [camera] = this.localStream.getVideoTracks();
-    const sender = this.pc.getSenders().find((s) => s.track === this.veil?.track);
+    const sender = this.pc.getSenders().find((s) => s.track === veil.track);
     await sender?.replaceTrack(camera);
-    this.veil.stop();
-    this.veil = null;
+    veil.stop();
+    if (!this.localStream) return null; // video ended meanwhile
     return this.preview();
   }
 
@@ -202,6 +215,7 @@ export class PeerSession {
       }
       this.localStream = null;
     }
+    this.opening = null;
   }
 
   close() {
