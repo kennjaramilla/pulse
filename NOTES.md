@@ -98,6 +98,35 @@ Trade-offs:
   live database never broke the running version. I followed the README and
   used `db push`; `prisma/migrations` still only has the initial migration.
 
+### Row-level security (added after submission)
+
+The checks above all live in route handlers. If one `where` were wrong, the
+database would still hand over someone else's signals, and those carry SDP and
+ICE candidates (IP addresses). So the Signal mailbox now has Postgres
+row-level security as a second line of defence:
+
+- `prisma/rls.sql` creates a `pulse_app` role and three policies. A session
+  only reads signals sent to it or by it, only inserts signals from itself,
+  and only deletes (drains) its own inbox.
+- `lib/db-session.ts` runs the poll drain and `deliver` in a short
+  transaction: `SET LOCAL ROLE pulse_app` plus `pulse.session_id` set to the
+  caller. Both are transaction-local, so nothing leaks onto the next request
+  that gets the pooled connection.
+- Server cleanup (stale sessions, expired signals, leave notices) still runs
+  as the table owner. RLS doesn't apply to the owner, and that cleanup has to
+  touch everyone's rows.
+- Prisma can't express policies and the project uses `db push`, so the SQL is
+  applied with `npm run db:rls`. It's idempotent.
+
+Checked on a local Postgres: the full request, accept, offer and leave flow
+works; as `pulse_app`, another session reads 0 rows, deletes 0 rows, and gets
+a policy error when it inserts with someone else's `fromId`.
+
+Trade-off: this brings back transactions over the pooler, which I avoided
+earlier. They're a few statements long, which PgBouncer's
+transaction mode handles fine. Presence isn't covered: every visitor reads it
+by design (the map), and the pairing writes are already conditional updates.
+
 ## Phase 2 — Make it good
 
 The idea: Pulse is "a living globe", so the globe should be the hero and
