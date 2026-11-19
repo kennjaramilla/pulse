@@ -7,7 +7,8 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "db:rls": "node scripts/apply-rls.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
