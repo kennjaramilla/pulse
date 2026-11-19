@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 
 // Removes sessions (on leave, or when they stop polling) and frees anyone who
 // was requesting or talking to them, with a signal so their UI updates too.
+// Server cleanup, so it runs as the table owner, outside row-level security.
 export async function removeSessions(ids: string[]) {
   if (ids.length === 0) return;
 

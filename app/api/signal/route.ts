@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import type { SignalType } from "@/lib/types";
 import { authenticate, readToken, unauthorized } from "@/lib/auth";
 import { allowSignal, tooMany } from "@/lib/rate-limit";
+import { asSession } from "@/lib/db-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -164,5 +165,7 @@ function deliver(
   type: SignalType,
   payload: string | null = null,
 ) {
-  return prisma.signal.create({ data: { fromId, toId, type, payload } });
+  return asSession(fromId, (tx) =>
+    tx.signal.create({ data: { fromId, toId, type, payload } }),
+  );
 }

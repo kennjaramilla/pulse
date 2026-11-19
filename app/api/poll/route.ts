@@ -5,6 +5,7 @@ import type { PollResponse } from "@/lib/types";
 import { authenticate, readToken, unauthorized } from "@/lib/auth";
 import { removeSessions } from "@/lib/remove-sessions";
 import { deleteOldCounters } from "@/lib/rate-limit";
+import { asSession } from "@/lib/db-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,16 +62,19 @@ export async function GET(request: NextRequest) {
   });
 
   // 4) Drain this user's mailbox: read, then delete exactly what we read so a
-  // concurrently-inserted signal is never lost.
-  const inbox = await prisma.signal.findMany({
-    where: { toId: id },
-    orderBy: { createdAt: "asc" },
-  });
-  if (inbox.length > 0) {
-    await prisma.signal.deleteMany({
-      where: { id: { in: inbox.map((s) => s.id) } },
+  // concurrently-inserted signal is never lost. Runs under row-level security.
+  const inbox = await asSession(id, async (tx) => {
+    const signals = await tx.signal.findMany({
+      where: { toId: id },
+      orderBy: { createdAt: "asc" },
     });
-  }
+    if (signals.length > 0) {
+      await tx.signal.deleteMany({
+        where: { id: { in: signals.map((s) => s.id) } },
+      });
+    }
+    return signals;
+  });
 
   const response: PollResponse = {
     peers: peers.map((p) => ({
